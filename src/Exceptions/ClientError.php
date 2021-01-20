@@ -27,8 +27,8 @@ class ClientError extends ErrorException
             $data = json_decode((string) $this->response->getBody(), true);
             if (isset($data['title']) || isset($data['detail'])) {
                 $separator = isset($body['title'], $body['detail']) ? "\n\n" : '';
+                $message = ($data['title'] ?? '').$separator.($data['detail'] ?? '');
             }
-            $message = ($data['title'] ?? '').$separator.($data['detail'] ?? '');
         }
 
         parent::__construct($message, $code);
