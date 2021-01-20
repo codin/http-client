@@ -26,7 +26,7 @@ class ClientError extends ErrorException
         if (strpos($this->response->getHeaderLine('Content-Type'), '/json') !== false) {
             $data = json_decode((string) $this->response->getBody(), true);
             if (isset($data['title']) || isset($data['detail'])) {
-                $separator = isset($body['title'], $body['detail']) ? "\n\n" : '';
+                $separator = isset($data['title'], $data['detail']) ? "\n\n" : '';
                 $message = ($data['title'] ?? '').$separator.($data['detail'] ?? '');
             }
         }

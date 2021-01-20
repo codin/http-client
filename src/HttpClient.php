@@ -21,6 +21,9 @@ class HttpClient implements ClientInterface
 
     protected array $options;
 
+    /**
+     * @var resource
+     */
     protected $session;
 
     public function __construct(
@@ -36,7 +39,9 @@ class HttpClient implements ClientInterface
 
     public function __destruct()
     {
-        curl_close($this->session);
+        if (is_resource($this->session)) {
+            curl_close($this->session);
+        }
     }
 
     protected function buildOptions(RequestInterface $request): array
@@ -49,7 +54,7 @@ class HttpClient implements ClientInterface
                 'HttpClient/%s php/%s curl/%s',
                 self::VERSION,
                 phpversion(),
-                curl_version()['version']
+                (curl_version() ?: ['version' => null])['version']
             ),
             CURLOPT_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
             CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
@@ -112,16 +117,18 @@ class HttpClient implements ClientInterface
 
     protected function parseHeaders(ResponseInterface $response, StreamInterface $headers): ResponseInterface
     {
-        $data = (string) $headers;
-        $parts = explode("\r\n\r\n", trim($data));
+        $data = rtrim((string) $headers);
+        $parts = explode("\r\n\r\n", $data);
         $last = array_pop($parts);
         $lines = explode("\r\n", $last);
         $status = array_shift($lines);
 
-        [$version, $status, $message] = sscanf($status, 'HTTP/%s %u %s');
-        $response = $response->withProtocolVersion($version)->withStatus($status, $message);
+        if (is_string($status) && strpos($status, 'HTTP/') === 0) {
+            [$version, $status, $message] = explode(' ', substr($status, strlen('http/')), 3);
+            $response = $response->withProtocolVersion($version)->withStatus((int) $status, $message);
+        }
 
-        return array_reduce($lines, function (ResponseInterface $response, string $line) {
+        return array_reduce($lines, static function (ResponseInterface $response, string $line): ResponseInterface {
             [$name, $value] = explode(':', $line, 2);
             return $response->withHeader($name, $value);
         }, $response);
