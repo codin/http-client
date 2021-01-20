@@ -134,21 +134,29 @@ class HttpClient implements ClientInterface
         return $this->parseHeaders($response, $headers);
     }
 
-    protected function createWriteBuffer(int $func): StreamInterface
-    {
-        $stream = $this->streamFactory->createStream('');
-        curl_setopt($this->session, $func, static function ($session, string $data) use ($stream): int {
-            return $stream->write($data);
-        });
-        return $stream;
-    }
-
     public function sendRequest(RequestInterface $request): ResponseInterface
     {
         curl_setopt_array($this->session, $this->buildOptions($request));
 
-        $headers = $this->createWriteBuffer(CURLOPT_HEADERFUNCTION);
-        $body = $this->createWriteBuffer(CURLOPT_WRITEFUNCTION);
+        $headers = $this->streamFactory->createStream('');
+
+        curl_setopt(
+            $this->session,
+            CURLOPT_HEADERFUNCTION,
+            static function ($session, string $data) use ($headers): int {
+                return $headers->write($data);
+            }
+        );
+
+        $body = $this->streamFactory->createStream('');
+
+        curl_setopt(
+            $this->session,
+            CURLOPT_WRITEFUNCTION,
+            static function ($session, string $data) use ($body): int {
+                return $body->write($data);
+            }
+        );
 
         $result = curl_exec($this->session);
         curl_reset($this->session);
