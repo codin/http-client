@@ -9,35 +9,28 @@ use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseFactoryInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\StreamFactoryInterface;
+use Psr\Http\Message\StreamInterface;
 
 class HttpClient implements ClientInterface
 {
     public const VERSION = '1.0';
 
-    /**
-     * @var ResponseFactoryInterface
-     */
-    protected $responseFactory;
+    protected ResponseFactoryInterface $responseFactory;
 
-    /**
-     * @var StreamFactoryInterface
-     */
-    protected $streamFactory;
+    protected StreamFactoryInterface $streamFactory;
 
-    /**
-     * @var resource
-     */
+    protected array $options;
+
     protected $session;
 
-    /**
-     * @var int
-     */
-    protected $timeout = 4;
-
-    public function __construct(ResponseFactoryInterface $responseFactory, StreamFactoryInterface $streamFactory)
-    {
+    public function __construct(
+        ResponseFactoryInterface $responseFactory,
+        StreamFactoryInterface $streamFactory,
+        array $options = []
+    ) {
         $this->responseFactory = $responseFactory;
         $this->streamFactory = $streamFactory;
+        $this->options = $options;
         $this->session = curl_init();
     }
 
@@ -50,12 +43,36 @@ class HttpClient implements ClientInterface
     {
         $options = [
             CURLOPT_URL => (string) $request->getUri(),
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => $this->timeout,
-            CURLOPT_USERAGENT => sprintf('HttpClient/%s php/%s curl/%s', self::VERSION, phpversion(), curl_version()['version']),
-            CURLOPT_HEADER => true,
-            CURLOPT_HTTPHEADER => [],
+            CURLOPT_RETURNTRANSFER => false,
+            CURLOPT_HEADER => false,
+            CURLOPT_USERAGENT => sprintf(
+                'HttpClient/%s php/%s curl/%s',
+                self::VERSION,
+                phpversion(),
+                curl_version()['version']
+            ),
+            CURLOPT_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
+            CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
+            CURLOPT_TIMEOUT => 5,
+            CURLOPT_COOKIEFILE => '',
+            CURLOPT_FOLLOWLOCATION => true,
         ];
+
+        if ('POST' === $request->getMethod()) {
+            $options[CURLOPT_POST] = true;
+        } elseif ('HEAD' === $request->getMethod()) {
+            $options[CURLOPT_NOBODY] = true;
+        } else {
+            $options[CURLOPT_CUSTOMREQUEST] = $request->getMethod();
+        }
+
+        if ($request->getProtocolVersion() === '1.1') {
+            $options[CURLOPT_HTTP_VERSION] = CURL_HTTP_VERSION_1_1;
+        } elseif ($request->getProtocolVersion() === '2.0') {
+            $options[CURLOPT_HTTP_VERSION] = CURL_HTTP_VERSION_2_0;
+        } else {
+            $options[CURLOPT_HTTP_VERSION] = CURL_HTTP_VERSION_1_0;
+        }
 
         $headers = [];
         foreach ($request->getHeaders() as $name => $group) {
@@ -63,56 +80,97 @@ class HttpClient implements ClientInterface
         }
         $options[CURLOPT_HTTPHEADER] = $headers;
 
-        if (in_array($request->getMethod(), ['PUT', 'POST', 'PATCH'])) {
-            $body = (string) $request->getBody();
-            $options[CURLOPT_POST] = true;
-            $options[CURLOPT_POSTFIELDS] = $body;
-        } elseif ($request->getMethod() === 'HEAD') {
-            $options[CURLOPT_NOBODY] = true;
+        // Prevent curl from sending its default Accept and Expect headers
+        foreach (['Accept', 'Expect'] as $name) {
+            if (!$request->hasHeader($name)) {
+                $options[CURLOPT_HTTPHEADER][] = $name.':';
+            }
         }
 
-        return $options;
+        if (in_array($request->getMethod(), ['PUT', 'POST', 'PATCH'])) {
+            if ('POST' !== $request->getMethod()) {
+                $options[CURLOPT_UPLOAD] = true;
+            }
+
+            if ($request->hasHeader('Content-Length')) {
+                $options[CURLOPT_INFILESIZE] = $request->getHeader('Content-Length')[0];
+            } elseif (!$request->hasHeader('Transfer-Encoding')) {
+                $options[CURLOPT_HTTPHEADER][] = 'Transfer-Encoding: chunked';
+            }
+
+            if ($request->getBody()->isSeekable()) {
+                $request->getBody()->rewind();
+            }
+
+            $options[CURLOPT_READFUNCTION] = static function ($session, $stream, int $chunk) use ($request): string {
+                return $request->getBody()->read($chunk);
+            };
+        }
+
+        return $this->options + $options;
     }
 
-    protected function parseHeaders(ResponseInterface $response, string $headers): ResponseInterface
+    protected function parseHeaders(ResponseInterface $response, StreamInterface $headers): ResponseInterface
     {
-        $headerLines = explode("\r\n", trim($headers));
-        $statusLine = array_shift($headerLines);
+        $data = (string) $headers;
+        $parts = explode("\r\n\r\n", trim($data));
+        $last = array_pop($parts);
+        $lines = explode("\r\n", $last);
+        $status = array_shift($lines);
 
-        if (preg_match('#HTTP/(?<version>[0-9\.]+) (?<status>[0-9]{3}) (?<message>.+)#i', $statusLine, $match)) {
-            $response = $response->withProtocolVersion($match['version'])->withStatus($match['status'], $match['message']);
-        }
+        [$version, $status, $message] = sscanf($status, 'HTTP/%s %u %s');
+        $response = $response->withProtocolVersion($version)->withStatus($status, $message);
 
-        return array_reduce($headerLines, function (ResponseInterface $carry, string $line) {
-            [$name, $value] = explode(':', $line);
-            return $carry->withHeader($name, $value);
+        return array_reduce($lines, function (ResponseInterface $response, string $line) {
+            [$name, $value] = explode(':', $line, 2);
+            return $response->withHeader($name, $value);
         }, $response);
     }
 
-    protected function buildResponse(string $result, array $info): ResponseInterface
+    protected function buildResponse(StreamInterface $headers, StreamInterface $body): ResponseInterface
     {
-        $headers = mb_substr($result, 0, $info['header_size']);
-        $body = mb_substr($result, $info['header_size']);
-        $stream = $this->streamFactory->createStream($body);
-
-        $response = $this->responseFactory->createResponse($info['http_code'])
-            ->withBody($stream);
+        $response = $this->responseFactory->createResponse(200)->withBody($body);
 
         return $this->parseHeaders($response, $headers);
+    }
+
+    protected function createWriteBuffer(int $func): StreamInterface
+    {
+        $stream = $this->streamFactory->createStream('');
+        curl_setopt($this->session, $func, static function ($session, string $data) use ($stream): int {
+            return $stream->write($data);
+        });
+        return $stream;
     }
 
     public function sendRequest(RequestInterface $request): ResponseInterface
     {
         curl_setopt_array($this->session, $this->buildOptions($request));
 
-        $result = curl_exec($this->session);
+        $headers = $this->createWriteBuffer(CURLOPT_HEADERFUNCTION);
+        $body = $this->createWriteBuffer(CURLOPT_WRITEFUNCTION);
 
-        if (!is_string($result)) {
-            throw new Exceptions\CurlError(sprintf('%s %s', curl_errno($this->session), curl_error($this->session)));
+        $result = curl_exec($this->session);
+        curl_reset($this->session);
+
+        if (false === $result) {
+            throw new Exceptions\CurlError(sprintf(
+                'cURL error (%s): %s',
+                curl_errno($this->session),
+                curl_error($this->session)
+            ));
         }
 
-        $info = curl_getinfo($this->session);
+        $response = $this->buildResponse($headers, $body);
 
-        return $this->buildResponse($result, $info);
+        if ($response->getStatusCode() >= 500) {
+            throw new Exceptions\ServerError($request, $response);
+        }
+
+        if ($response->getStatusCode() >= 400) {
+            throw new Exceptions\ClientError($request, $response);
+        }
+
+        return $response;
     }
 }

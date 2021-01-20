@@ -14,10 +14,10 @@
         }
     ],
     "require": {
-        "php": ">=7.3",
+        "php": ">=7.4",
         "ext-curl": "*",
-        "nyholm/psr7": "^1.3",
-        "psr/http-client": "^1.0",
+        "nyholm/psr7": "@stable",
+        "psr/http-client": "@stable",
         "psr/http-factory": "@stable",
         "psr/http-message": "@stable"
     },
