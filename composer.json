@@ -13,6 +13,9 @@
             "role": "Developer"
         }
     ],
+    "provide": {
+        "psr/http-client-implementation": "1.0"
+    },
     "require": {
         "php": ">=7.4",
         "ext-curl": "*",
