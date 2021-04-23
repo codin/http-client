@@ -136,6 +136,9 @@ class HttpClient implements ClientInterface
 
     protected function buildResponse(StreamInterface $headers, StreamInterface $body): ResponseInterface
     {
+        if ($body->isSeekable()) {
+            $body->rewind();
+        }
         $response = $this->responseFactory->createResponse(200)->withBody($body);
 
         return $this->parseHeaders($response, $headers);
