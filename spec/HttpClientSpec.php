@@ -31,10 +31,6 @@ class HttpClientSpec extends ObjectBehavior
         $response = $this->sendRequest($request);
         $response->getStatusCode()->shouldReturn(200);
 
-        $request = $psr17Factory->createRequest('GET', $url)->withProtocolVersion('1.0');
-        $response = $this->sendRequest($request);
-        $response->getStatusCode()->shouldReturn(200);
-
         $request = $psr17Factory->createRequest('GET', $url.'/get/503');
         $this->shouldThrow(Exceptions\ServerError::class)->duringSendRequest($request);
 

@@ -2,8 +2,10 @@ formatter.name: pretty
 stop_on_failure: true
 code_generation: false
 suites:
-    default:
-        src_path: ./src
+  default:
+    namespace: Codin\HttpClient
+    psr4_prefix: Codin\HttpClient
+    src_path: ./src
 extensions:
   FriendsOfPhpSpec\PhpSpec\CodeCoverage\CodeCoverageExtension:
     format:
