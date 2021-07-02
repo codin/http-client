@@ -4,6 +4,12 @@ declare(strict_types=1);
 
 namespace Codin\HttpClient;
 
+use function is_string;
+use JsonException;
+use Psr\Http\Message\ServerRequestFactoryInterface;
+use Psr\Http\Message\ServerRequestInterface;
+use Psr\Http\Message\StreamFactoryInterface;
+
 class RequestBuilder
 {
     protected ServerRequestFactoryInterface $serverRequestFactory;
@@ -53,9 +59,9 @@ class RequestBuilder
         }
 
         if (isset($options['json'])) {
-            $json = json_encode($options['json']);
-            if (false === $json) {
-                throw new ErrorException('Failed to encode json payload');
+            $json = json_encode($options['json'], JSON_THROW_ON_ERROR);
+            if (!is_string($json)) {
+                throw new JsonException(json_last_error_msg(), json_last_error());
             }
             $body = $this->streamFactory->createStream($json);
             $request = $request->withBody($body);
@@ -74,14 +80,14 @@ class RequestBuilder
             $body = $this->streamFactory->createStream($encodedFormData);
             $request = $request
                 ->withBody($body)
-                ->withHeader('Content-Type', 'multipart/form-data; boundary=' . $boundary)
+                ->withHeader('Content-Type', 'multipart/form-data; boundary=' . $boundaryName)
             ;
         }
 
         if (isset($options['form'])) {
             $body = $this->streamFactory->createStream(http_build_query($options['form']));
             $request = $request
-                ->withBody($stream)
+                ->withBody($body)
                 ->withHeader('Content-Type', 'application/x-www-form-urlencoded')
             ;
         }
