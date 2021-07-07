@@ -68,20 +68,13 @@ class RequestBuilder
         }
 
         if (isset($options['multipart'])) {
-            $boundaryName = bin2hex(random_bytes(32));
-            $boundaries = [];
+            $multipart = new MultipartBuilder($this->streamFactory);
+
             foreach ($options['multipart'] as $name => $value) {
-                $boundaries[] = '--' . $boundaryName;
-                $boundaries[] = 'Content-Disposition: form-data; name="' . $name . '"';
-                $boundaries[] = $value;
+                $multipart->add($name, $value);
             }
-            $boundaries[] = '--' . $boundaryName . '--';
-            $encodedFormData = implode("\r\n", $boundaries);
-            $body = $this->streamFactory->createStream($encodedFormData);
-            $request = $request
-                ->withBody($body)
-                ->withHeader('Content-Type', 'multipart/form-data; boundary=' . $boundaryName)
-            ;
+
+            $request = $multipart->attach($request);
         }
 
         if (isset($options['form'])) {
