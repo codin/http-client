@@ -14,28 +14,27 @@ class MultipartBuilder
 
     protected string $boundary;
 
-    public function __construct(StreamFactoryInterface $streamFactory)
+    public function __construct(StreamFactoryInterface $streamFactory, ?string $boundary = null)
     {
         $this->stream = $streamFactory->createStream('');
-        $this->boundary = uniqid('', true);
+        $this->boundary = null === $boundary ? uniqid('', true) : $boundary;
     }
 
-    /**
-     * @param string|array<string>
-     */
-    protected function write($data, string $newline = "\r\n"): void
+    protected function write(string $data, string $newline = "\r\n"): void
     {
-        $this->stream->write((is_array($data) ? implode($newline, $data) : $data) . $newline);
+        $this->stream->write($data . $newline);
     }
 
     public function add(string $name, string $data, array $headers = []): void
     {
-        if (!array_key_exists('content-disposition', array_change_key_case($headers))) {
-            $headers['Content-Disposition'] = sprintf('form-data; name="%s"', $name);
+        $headers = array_change_key_case($headers);
+
+        if (!array_key_exists('content-disposition', $headers)) {
+            $headers['content-disposition'] = sprintf('form-data; name="%s"', $name);
         }
 
-        if (!array_key_exists('content-length', array_change_key_case($headers))) {
-            $headers['Content-Length'] = mb_strlen($data);
+        if (!array_key_exists('content-length', $headers)) {
+            $headers['content-length'] = mb_strlen($data);
         }
 
         $this->write('--' . $this->boundary);
@@ -44,7 +43,9 @@ class MultipartBuilder
             $this->write(sprintf('%s: %s', $key, $value));
         }
 
-        $this->write(['', $data]);
+        $this->write('');
+
+        $this->write($data);
     }
 
     public function attach(RequestInterface $request): RequestInterface
