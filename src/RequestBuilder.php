@@ -32,7 +32,7 @@ class RequestBuilder
      * @param array $options['multipart']
      * @param array $options['form']
      */
-    public function build(string $method, string $url, array $options): RequestInterface
+    public function build(string $method, string $url, array $options = []): RequestInterface
     {
         $request = $this->serverRequestFactory->createServerRequest(strtoupper($method), $url);
 
