@@ -6,6 +6,6 @@ namespace Codin\HttpClient\Exceptions;
 
 use ErrorException;
 
-class CurlError extends ErrorException
+class TransportError extends ErrorException
 {
 }

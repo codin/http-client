@@ -4,17 +4,20 @@ declare(strict_types=1);
 
 namespace Codin\HttpClient\Exceptions;
 
-use ErrorException;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
 
-class ClientError extends ErrorException
+class ClientError extends TransportError
 {
+    protected RequestInterface $request;
+
     protected ResponseInterface $response;
 
     public function __construct(RequestInterface $request, ResponseInterface $response)
     {
+        $this->request = $request;
         $this->response = $response;
+
         $code = $response->getStatusCode();
         $message = sprintf(
             'Http request "%s %s" returned %u response',
@@ -25,13 +28,18 @@ class ClientError extends ErrorException
 
         if (strpos($this->response->getHeaderLine('Content-Type'), '/json') !== false) {
             $data = json_decode((string) $this->response->getBody(), true);
-            if (isset($data['title']) || isset($data['detail'])) {
+            if (is_array($data) && (isset($data['title']) || isset($data['detail']))) {
                 $separator = isset($data['title'], $data['detail']) ? "\n\n" : '';
                 $message = ($data['title'] ?? '').$separator.($data['detail'] ?? '');
             }
         }
 
         parent::__construct($message, $code);
+    }
+
+    public function getRequest(): RequestInterface
+    {
+        return $this->request;
     }
 
     public function getResponse(): ResponseInterface

@@ -38,7 +38,7 @@ class HttpClientSpec extends ObjectBehavior
         $this->shouldThrow(Exceptions\ClientError::class)->duringSendRequest($request);
 
         $request = $psr17Factory->createRequest('GET', 'http://localhost:3001');
-        $this->shouldThrow(Exceptions\CurlError::class)->duringSendRequest($request);
+        $this->shouldThrow(Exceptions\TransportError::class)->duringSendRequest($request);
 
         $request = $psr17Factory->createRequest('HEAD', $url);
         $response = $this->sendRequest($request);

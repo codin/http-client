@@ -172,7 +172,7 @@ class HttpClient implements ClientInterface
         curl_reset($this->session);
 
         if (false === $result) {
-            throw new Exceptions\CurlError(sprintf(
+            throw new Exceptions\TransportError(sprintf(
                 'cURL error (%s): %s',
                 curl_errno($this->session),
                 curl_error($this->session)

@@ -4,10 +4,9 @@ declare(strict_types=1);
 
 namespace Codin\HttpClient;
 
-use function is_string;
 use JsonException;
+use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ServerRequestFactoryInterface;
-use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\StreamFactoryInterface;
 
 class RequestBuilder
@@ -33,7 +32,7 @@ class RequestBuilder
      * @param array $options['multipart']
      * @param array $options['form']
      */
-    public function build(string $method, string $url, array $options): ServerRequestInterface
+    public function build(string $method, string $url, array $options): RequestInterface
     {
         $request = $this->serverRequestFactory->createServerRequest(strtoupper($method), $url);
 
