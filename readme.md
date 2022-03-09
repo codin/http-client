@@ -1,5 +1,6 @@
-Simple http client, zero dependencies
+# Simple http client
 
+Example
 
 ```php
 $client = new Codin\HttpClient\HttpClient();
