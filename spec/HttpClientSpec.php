@@ -27,7 +27,7 @@ class HttpClientSpec extends ObjectBehavior
 
         $this->beConstructedWith($psr17Factory, $psr17Factory);
 
-        $request = $psr17Factory->createRequest('GET', $url);
+        $request = $psr17Factory->createRequest('GET', $url.'/');
         $response = $this->sendRequest($request);
         $response->getStatusCode()->shouldReturn(200);
 
@@ -37,7 +37,7 @@ class HttpClientSpec extends ObjectBehavior
         $request = $psr17Factory->createRequest('GET', $url.'/get/404');
         $this->shouldThrow(Exceptions\ClientError::class)->duringSendRequest($request);
 
-        $request = $psr17Factory->createRequest('GET', 'http://localhost:3001');
+        $request = $psr17Factory->createRequest('GET', 'http://localhost:3001/');
         $this->shouldThrow(Exceptions\TransportError::class)->duringSendRequest($request);
 
         $request = $psr17Factory->createRequest('HEAD', $url);

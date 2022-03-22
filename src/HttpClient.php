@@ -112,7 +112,7 @@ class HttpClient implements ClientInterface
             };
         }
 
-        return array_merge($options, $this->options);
+        return $this->options + $options;
     }
 
     protected function parseHeaders(ResponseInterface $response, StreamInterface $headers): ResponseInterface
