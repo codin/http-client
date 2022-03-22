@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace Codin\HttpClient\Exceptions;
 
+use ErrorException;
+use Psr\Http\Client\RequestExceptionInterface;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
 
-class ClientError extends TransportError
+class ClientError extends ErrorException implements RequestExceptionInterface
 {
     protected RequestInterface $request;
 

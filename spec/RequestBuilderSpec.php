@@ -2,14 +2,14 @@
 
 namespace spec\Codin\HttpClient;
 
+use function json_encode;
 use PhpSpec\ObjectBehavior;
 use Prophecy\Argument\Token\TypeToken;
 use Psr\Http\Message\ServerRequestFactoryInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\StreamFactoryInterface;
-use Psr\Http\Message\UriInterface;
 use Psr\Http\Message\StreamInterface;
-use function json_encode;
+use Psr\Http\Message\UriInterface;
 
 class RequestBuilderSpec extends ObjectBehavior
 {

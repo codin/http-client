@@ -112,7 +112,7 @@ class HttpClient implements ClientInterface
             };
         }
 
-        return $this->options + $options;
+        return array_merge($options, $this->options);
     }
 
     protected function parseHeaders(ResponseInterface $response, StreamInterface $headers): ResponseInterface
@@ -172,11 +172,7 @@ class HttpClient implements ClientInterface
         curl_reset($this->session);
 
         if (false === $result) {
-            throw new Exceptions\TransportError(sprintf(
-                'cURL error (%s): %s',
-                curl_errno($this->session),
-                curl_error($this->session)
-            ));
+            throw new Exceptions\TransportError(curl_error($this->session), curl_errno($this->session), $request);
         }
 
         $response = $this->buildResponse($headers, $body);

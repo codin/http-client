@@ -1,7 +1,7 @@
 {
     "name": "codin/http-client",
     "description": "Tiny PSR-18 Http Client",
-    "license": "Apache-2.0",
+    "license": "MIT",
     "type": "library",
     "minimum-stability": "dev",
     "prefer-stable": true,

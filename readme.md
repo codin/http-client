@@ -1,5 +1,9 @@
 # Simple http client
 
+![version](https://img.shields.io/github/v/tag/codin/http-client)
+![workflow](https://img.shields.io/github/workflow/status/codin/http-client/Composer)
+![license](https://img.shields.io/github/license/codin/http-client)
+
 Example
 
 ```php
