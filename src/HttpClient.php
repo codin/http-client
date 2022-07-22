@@ -21,19 +21,25 @@ class HttpClient implements ClientInterface
 
     protected array $options;
 
+    protected bool $debug;
+
+    protected array $metrics = [];
+
     /**
-     * @var resource
+     * @var \CurlHandle
      */
     protected $session;
 
     public function __construct(
         ResponseFactoryInterface $responseFactory,
         StreamFactoryInterface $streamFactory,
-        array $options = []
+        array $options = [],
+        bool $debug = false
     ) {
         $this->responseFactory = $responseFactory;
         $this->streamFactory = $streamFactory;
         $this->options = $options;
+        $this->debug = $debug;
         $this->session = curl_init();
     }
 
@@ -42,6 +48,11 @@ class HttpClient implements ClientInterface
         if (is_resource($this->session)) {
             curl_close($this->session);
         }
+    }
+
+    public function getMetrics(): array
+    {
+        return $this->metrics;
     }
 
     protected function buildOptions(RequestInterface $request): array
@@ -58,7 +69,6 @@ class HttpClient implements ClientInterface
             ),
             CURLOPT_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
             CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
-            CURLOPT_TIMEOUT => 5,
             CURLOPT_COOKIEFILE => '',
             CURLOPT_FOLLOWLOCATION => true,
         ];
@@ -103,7 +113,7 @@ class HttpClient implements ClientInterface
                 $options[CURLOPT_HTTPHEADER][] = 'Transfer-Encoding: chunked';
             }
 
-            if ($request->getBody()->isSeekable()) {
+            if ($request->getBody()->isSeekable() && $request->getBody()->tell() > 0) {
                 $request->getBody()->rewind();
             }
 
@@ -169,6 +179,9 @@ class HttpClient implements ClientInterface
         );
 
         $result = curl_exec($this->session);
+        if ($this->debug) {
+            $this->metrics = curl_getinfo($this->session);
+        }
         curl_reset($this->session);
 
         if (false === $result) {
