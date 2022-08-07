@@ -154,7 +154,7 @@ class HttpClient implements ClientInterface
         return $this->parseHeaders($response, $headers);
     }
 
-    public function sendRequest(RequestInterface $request): ResponseInterface
+    protected function prepareSession(RequestInterface $request): array
     {
         curl_setopt_array($this->session, $this->buildOptions($request));
 
@@ -177,6 +177,13 @@ class HttpClient implements ClientInterface
                 return $body->write($data);
             }
         );
+
+        return [$headers, $body];
+    }
+
+    public function sendRequest(RequestInterface $request): ResponseInterface
+    {
+        [$headers, $body] = $this->prepareSession($request);
 
         $result = curl_exec($this->session);
         if ($this->debug) {

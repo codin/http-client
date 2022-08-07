@@ -13,30 +13,41 @@ class ClientError extends ErrorException implements RequestExceptionInterface
 {
     protected RequestInterface $request;
 
-    protected ResponseInterface $response;
+    protected ?ResponseInterface $response = null;
 
-    public function __construct(RequestInterface $request, ResponseInterface $response)
+    public function __construct(RequestInterface $request, ?ResponseInterface $response = null)
     {
         $this->request = $request;
         $this->response = $response;
+        parent::__construct($this->createMessage(), $response instanceof ResponseInterface ? $response->getStatusCode() : 0);
+    }
 
-        $code = $response->getStatusCode();
+    protected function createMessage(): string
+    {
+        if (!$this->response instanceof ResponseInterface) {
+            return sprintf(
+                'Http request "%s %s" failed to get a response',
+                $this->request->getMethod(),
+                $this->request->getUri()
+            );
+        }
+
         $message = sprintf(
             'Http request "%s %s" returned %u response',
-            $request->getMethod(),
-            $request->getUri(),
-            $code
+            $this->request->getMethod(),
+            $this->request->getUri(),
+            $this->response->getStatusCode()
         );
 
         if (strpos($this->response->getHeaderLine('Content-Type'), '/json') !== false) {
-            $data = json_decode((string) $this->response->getBody(), true);
+            $data = json_decode((string) $this->response->getBody(), true, 512, JSON_THROW_ON_ERROR);
             if (is_array($data) && (isset($data['title']) || isset($data['detail']))) {
                 $separator = isset($data['title'], $data['detail']) ? "\n\n" : '';
                 $message = ($data['title'] ?? '').$separator.($data['detail'] ?? '');
             }
         }
 
-        parent::__construct($message, $code);
+        return $message;
     }
 
     public function getRequest(): RequestInterface
@@ -44,7 +55,7 @@ class ClientError extends ErrorException implements RequestExceptionInterface
         return $this->request;
     }
 
-    public function getResponse(): ResponseInterface
+    public function getResponse(): ?ResponseInterface
     {
         return $this->response;
     }
