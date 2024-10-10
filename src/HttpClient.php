@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Codin\HttpClient;
 
+use CurlHandle;
 use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseFactoryInterface;
@@ -11,51 +12,53 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\StreamFactoryInterface;
 use Psr\Http\Message\StreamInterface;
 
-class HttpClient implements ClientInterface
+readonly class HttpClient implements ClientInterface
 {
     public const VERSION = '1.0';
 
-    protected ResponseFactoryInterface $responseFactory;
+    /**
+     * @param array<string, mixed> $options
+     */
+    public function __construct(
+        private ResponseFactoryInterface $responseFactory,
+        private StreamFactoryInterface $streamFactory,
+        private array $options = [],
+    ) {
+    }
 
-    protected StreamFactoryInterface $streamFactory;
+    private function parseHeaders(ResponseInterface $response, StreamInterface $headers): ResponseInterface
+    {
+        $data = rtrim((string) $headers);
+        $parts = explode("\r\n\r\n", $data);
+        $last = array_pop($parts);
+        $lines = explode("\r\n", $last);
+        $status = array_shift($lines);
 
-    protected array $options;
+        if (is_string($status) && strpos($status, 'HTTP/') === 0) {
+            [$version, $status, $message] = explode(' ', substr($status, strlen('http/')), 3);
+            $response = $response->withProtocolVersion($version)->withStatus((int) $status, $message);
+        }
 
-    protected bool $debug;
+        return array_reduce($lines, static function (ResponseInterface $response, string $line): ResponseInterface {
+            [$name, $value] = explode(':', $line, 2);
+            return $response->withHeader($name, $value);
+        }, $response);
+    }
 
-    protected array $metrics = [];
+    private function buildResponse(StreamInterface $headers, StreamInterface $body): ResponseInterface
+    {
+        if ($body->isSeekable()) {
+            $body->rewind();
+        }
+        $response = $this->responseFactory->createResponse(200)->withBody($body);
+
+        return $this->parseHeaders($response, $headers);
+    }
 
     /**
-     * @var \CurlHandle
+     * @return array<int, mixed>
      */
-    protected $session;
-
-    public function __construct(
-        ResponseFactoryInterface $responseFactory,
-        StreamFactoryInterface $streamFactory,
-        array $options = [],
-        bool $debug = false
-    ) {
-        $this->responseFactory = $responseFactory;
-        $this->streamFactory = $streamFactory;
-        $this->options = $options;
-        $this->debug = $debug;
-        $this->session = curl_init();
-    }
-
-    public function __destruct()
-    {
-        if (is_resource($this->session)) {
-            curl_close($this->session);
-        }
-    }
-
-    public function getMetrics(): array
-    {
-        return $this->metrics;
-    }
-
-    protected function buildOptions(RequestInterface $request): array
+    private function buildOptions(RequestInterface $request): array
     {
         $options = [
             CURLOPT_URL => (string) $request->getUri(),
@@ -71,15 +74,8 @@ class HttpClient implements ClientInterface
             CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
             CURLOPT_COOKIEFILE => '',
             CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_CUSTOMREQUEST => $request->getMethod(),
         ];
-
-        if ('POST' === $request->getMethod()) {
-            $options[CURLOPT_POST] = true;
-        } elseif ('HEAD' === $request->getMethod()) {
-            $options[CURLOPT_NOBODY] = true;
-        } else {
-            $options[CURLOPT_CUSTOMREQUEST] = $request->getMethod();
-        }
 
         if ($request->getProtocolVersion() === '1.1') {
             $options[CURLOPT_HTTP_VERSION] = CURL_HTTP_VERSION_1_1;
@@ -102,15 +98,26 @@ class HttpClient implements ClientInterface
             }
         }
 
-        if (in_array($request->getMethod(), ['PUT', 'POST', 'PATCH'])) {
-            if ('POST' !== $request->getMethod()) {
-                $options[CURLOPT_UPLOAD] = true;
+        if ($request->getBody()->getSize() > 0) {
+            $size = $request->hasHeader('Content-Length')
+                ? (int) $request->getHeaderLine('Content-Length')
+                : null;
+
+            $options[CURLOPT_UPLOAD] = true;
+
+            // If the Expect header is not present, prevent curl from adding it
+            if (!$request->hasHeader('Expect')) {
+                $options[CURLOPT_HTTPHEADER][] = 'Expect:';
             }
 
-            if ($request->hasHeader('Content-Length')) {
-                $options[CURLOPT_INFILESIZE] = $request->getHeader('Content-Length')[0];
-            } elseif (!$request->hasHeader('Transfer-Encoding')) {
-                $options[CURLOPT_HTTPHEADER][] = 'Transfer-Encoding: chunked';
+            // cURL sometimes adds a content-type by default. Prevent this.
+            if (!$request->hasHeader('Content-Type')) {
+                $options[CURLOPT_HTTPHEADER][] = 'Content-Type:';
+            }
+
+            if ($size !== null) {
+                $options[CURLOPT_INFILESIZE] = $size;
+                $request = $request->withoutHeader('Content-Length');
             }
 
             if ($request->getBody()->isSeekable() && $request->getBody()->tell() > 0) {
@@ -122,46 +129,20 @@ class HttpClient implements ClientInterface
             };
         }
 
-        return $this->options + $options;
+        return $options;
     }
 
-    protected function parseHeaders(ResponseInterface $response, StreamInterface $headers): ResponseInterface
+    /**
+     * @return array{0: StreamInterface, 1: StreamInterface}
+     */
+    private function prepareSession(RequestInterface $request, CurlHandle $session): array
     {
-        $data = rtrim((string) $headers);
-        $parts = explode("\r\n\r\n", $data);
-        $last = array_pop($parts);
-        $lines = explode("\r\n", $last);
-        $status = array_shift($lines);
-
-        if (is_string($status) && strpos($status, 'HTTP/') === 0) {
-            [$version, $status, $message] = explode(' ', substr($status, strlen('http/')), 3);
-            $response = $response->withProtocolVersion($version)->withStatus((int) $status, $message);
-        }
-
-        return array_reduce($lines, static function (ResponseInterface $response, string $line): ResponseInterface {
-            [$name, $value] = explode(':', $line, 2);
-            return $response->withHeader($name, $value);
-        }, $response);
-    }
-
-    protected function buildResponse(StreamInterface $headers, StreamInterface $body): ResponseInterface
-    {
-        if ($body->isSeekable()) {
-            $body->rewind();
-        }
-        $response = $this->responseFactory->createResponse(200)->withBody($body);
-
-        return $this->parseHeaders($response, $headers);
-    }
-
-    protected function prepareSession(RequestInterface $request): array
-    {
-        curl_setopt_array($this->session, $this->buildOptions($request));
+        curl_setopt_array($session, $this->buildOptions($request));
 
         $headers = $this->streamFactory->createStream('');
 
         curl_setopt(
-            $this->session,
+            $session,
             CURLOPT_HEADERFUNCTION,
             static function ($session, string $data) use ($headers): int {
                 return $headers->write($data);
@@ -171,7 +152,7 @@ class HttpClient implements ClientInterface
         $body = $this->streamFactory->createStream('');
 
         curl_setopt(
-            $this->session,
+            $session,
             CURLOPT_WRITEFUNCTION,
             static function ($session, string $data) use ($body): int {
                 return $body->write($data);
@@ -183,16 +164,21 @@ class HttpClient implements ClientInterface
 
     public function sendRequest(RequestInterface $request): ResponseInterface
     {
-        [$headers, $body] = $this->prepareSession($request);
+        $session = curl_init();
 
-        $result = curl_exec($this->session);
-        if ($this->debug) {
-            $this->metrics = curl_getinfo($this->session);
+        [$headers, $body] = $this->prepareSession($request, $session);
+
+        $result = curl_exec($session);
+        if (isset($this->options['metrics']) && is_callable($this->options['metrics'])) {
+            $metrics = curl_getinfo($session);
+            $this->options['metrics']($metrics);
         }
-        curl_reset($this->session);
+        $errorMessage = curl_error($session);
+        $errorCode = curl_errno($session);
+        curl_close($session);
 
         if (false === $result) {
-            throw new Exceptions\TransportError(curl_error($this->session), curl_errno($this->session), $request);
+            throw new Exceptions\TransportError($errorMessage, $errorCode, $request);
         }
 
         $response = $this->buildResponse($headers, $body);

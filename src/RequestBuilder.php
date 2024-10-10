@@ -8,6 +8,7 @@ use JsonException;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ServerRequestFactoryInterface;
 use Psr\Http\Message\StreamFactoryInterface;
+use Psr\Http\Message\StreamInterface;
 
 class RequestBuilder
 {
@@ -24,35 +25,31 @@ class RequestBuilder
     }
 
     /**
-     * @param array $options['headers']
-     * @param array $options['query']
-     * @param StreamInterface $options['stream']
-     * @param string $options['body']
-     * @param array $options['json']
-     * @param array $options['multipart']
-     * @param array $options['form']
+     * @param array<string, mixed> $options
      */
     public function build(string $method, string $url, array $options = []): RequestInterface
     {
         $request = $this->serverRequestFactory->createServerRequest(strtoupper($method), $url);
 
-        if (isset($options['headers'])) {
+        if (isset($options['headers']) && is_array($options['headers'])) {
             foreach ($options['headers'] as $name => $value) {
                 $request = $request->withHeader($name, $value);
             }
         }
 
-        if (isset($options['query'])) {
-            $uri = $request->getUri()
-                ->withQuery(http_build_query($options['query']));
+        $encoding = isset($options['encoding']) && is_int($options['encoding']) ? $options['encoding'] : PHP_QUERY_RFC1738;
+
+        if (isset($options['query']) && is_array($options['query'])) {
+            $queryString = http_build_query($options['query'], encoding_type: $encoding);
+            $uri = $request->getUri()->withQuery($queryString);
             $request = $request->withUri($uri);
         }
 
-        if (isset($options['stream'])) {
+        if (isset($options['stream']) && $options['stream'] instanceof StreamInterface) {
             $request = $request->withBody($options['stream']);
         }
 
-        if (isset($options['body'])) {
+        if (isset($options['body']) && is_string($options['body'])) {
             $body = $this->streamFactory->createStream($options['body']);
             $request = $request->withBody($body);
         }
@@ -66,7 +63,7 @@ class RequestBuilder
             $request = $request->withBody($body);
         }
 
-        if (isset($options['multipart'])) {
+        if (isset($options['multipart']) && is_array($options['multipart'])) {
             $multipart = new MultipartBuilder($this->streamFactory);
 
             foreach ($options['multipart'] as $name => $value) {
@@ -76,8 +73,9 @@ class RequestBuilder
             $request = $multipart->attach($request);
         }
 
-        if (isset($options['form'])) {
-            $body = $this->streamFactory->createStream(http_build_query($options['form']));
+        if (isset($options['form']) && is_array($options['form'])) {
+            $queryString = http_build_query($options['form'], encoding_type: $encoding);
+            $body = $this->streamFactory->createStream($queryString);
             $request = $request
                 ->withBody($body)
                 ->withHeader('Content-Type', 'application/x-www-form-urlencoded')

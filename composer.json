@@ -1,5 +1,6 @@
 {
     "name": "codin/http-client",
+    "version": "1.0.0",
     "description": "Tiny PSR-18 Http Client",
     "license": "MIT",
     "type": "library",
@@ -17,7 +18,7 @@
         "psr/http-client-implementation": "1.0"
     },
     "require": {
-        "php": ">=7.4",
+        "php": ">=8.3",
         "ext-curl": "*",
         "nyholm/psr7": "@stable",
         "psr/http-client": "@stable",
@@ -50,7 +51,7 @@
             "phpstan analyse",
             "phpspec run"
         ],
-        "uninstall": [
+        "clean": [
             "rm -rf ./bin",
             "rm -rf ./vendor",
             "rm ./composer.lock"

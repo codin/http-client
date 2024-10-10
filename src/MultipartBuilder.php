@@ -10,21 +10,24 @@ use Psr\Http\Message\StreamInterface;
 
 class MultipartBuilder
 {
-    protected StreamInterface $stream;
+    private StreamInterface $stream;
 
-    protected string $boundary;
-
-    public function __construct(StreamFactoryInterface $streamFactory, ?string $boundary = null)
-    {
+    public function __construct(
+        StreamFactoryInterface $streamFactory,
+        private ?string $boundary = null
+    ) {
         $this->stream = $streamFactory->createStream('');
         $this->boundary = null === $boundary ? uniqid('', true) : $boundary;
     }
 
-    protected function write(string $data, string $newline = "\r\n"): void
+    private function write(string $data, string $newline = "\r\n"): void
     {
         $this->stream->write($data . $newline);
     }
 
+    /**
+     * @param array<string, string> $headers
+     */
     public function add(string $name, string $data, array $headers = []): void
     {
         $headers = array_change_key_case($headers);
